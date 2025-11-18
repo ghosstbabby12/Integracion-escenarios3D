@@ -8,9 +8,7 @@ public class WeaponController : MonoBehaviour
     public bool shooting = false;
     public GameObject bulletPrefab;
 
-    void Start()
-    {
-    }
+    void Start() { }
 
     void Update()
     {

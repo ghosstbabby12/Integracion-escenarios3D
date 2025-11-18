@@ -5,10 +5,8 @@ using UnityEngine.UI;
 
 public class HealtBar : MonoBehaviour
 {
-    public PlayerController thePlayer;
-
+    public ParticipantController thePlayer;
     public Image lifebarFill;
-
     private RectTransform reactTransform;
 
     void Start()
@@ -19,9 +17,7 @@ public class HealtBar : MonoBehaviour
     void Update()
     {
         float healthPercentage = thePlayer.currentHealth / thePlayer.maxHealth;
-
         reactTransform.localScale = new Vector3(healthPercentage, 1, 1);
-
         lifebarFill.color = Color.Lerp(Color.red, Color.green, healthPercentage);
     }
 }

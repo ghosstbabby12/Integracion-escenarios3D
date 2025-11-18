@@ -5,21 +5,15 @@ using UnityEngine;
 public class BodyPartHitCheck : MonoBehaviour
 {
     [HideInInspector]
-    public PlayerController PLAYER;
+    public ParticipantController PLAYER;
 
     public string BodyName;
     public float Multiplier;
     public float LastDamage;
 
-    void Start()
-    {
-        
-    }
+    void Start() { }
 
-    void Update()
-    {
-            
-    }
+    void Update() { }
 
     public void TakeHit(float damage)
     {

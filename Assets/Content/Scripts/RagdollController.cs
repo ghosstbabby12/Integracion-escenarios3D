@@ -6,19 +6,18 @@ public class RagdollController : MonoBehaviour
     Animator playerAnim;
     Rigidbody playerBody;
     Rigidbody[] playerBones;
-    PlayerController PLAYER;
+    ParticipantController PLAYER;
 
     public List<HitMultiplier> hitStats;
 
     void Awake()
     {
-        // Inicializa referencias lo antes posible para que Active(false) sea seguro
         playerAnim = GetComponent<Animator>();
         if (playerAnim == null) playerAnim = GetComponentInChildren<Animator>();
 
         playerBody = GetComponentInParent<Rigidbody>();
         playerBones = GetComponentsInChildren<Rigidbody>();
-        PLAYER = GetComponentInParent<PlayerController>();
+        PLAYER = GetComponentInParent<ParticipantController>();
     }
 
     void Start()
@@ -37,7 +36,6 @@ public class RagdollController : MonoBehaviour
 
             BodyPartHitCheck partToCheck = bone.gameObject.AddComponent<BodyPartHitCheck>();
             partToCheck.PLAYER = PLAYER;
-
             string bName = bone.gameObject.name.ToLower();
 
             foreach (HitMultiplier hit in hitStats)
@@ -50,7 +48,6 @@ public class RagdollController : MonoBehaviour
                 }
             }
         }
-
         Active(false);
     }
 

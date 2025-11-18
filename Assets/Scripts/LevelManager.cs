@@ -2,12 +2,14 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
 using System.Collections;
+using System.Reflection;
 
 public class LevelManager : MonoBehaviour
 {
     public static LevelManager instance;
     public int levelScore;
     public float levelTimer = 10f;
+
     [Header("Secuencia de escenas")]
     [Tooltip("Lista ordenada de escenas (índice 0: Nivel 1, índice 1: Nivel 2, resto: genéricos)")]
     public string[] levelNames = new string[0];
@@ -20,14 +22,24 @@ public class LevelManager : MonoBehaviour
     public TextMeshProUGUI messageText;
     public float messageDuration = 2f;
 
+    [Header("Configuración de detección")]
+    [Tooltip("Tag utilizado para identificar enemigos en la escena")]
+    public string enemyTag = "Enemy";
+
     private static bool hasSessionStarted = false;
     private bool levelEndTriggered = false;
 
-    void Awake() => instance = this;
+    void Awake()
+    {
+        // singleton ligero
+        if (instance == null) instance = this;
+        else if (instance != this) Destroy(gameObject);
+    }
 
     void Start()
     {
         levelScore = 0;
+        levelEndTriggered = false;
 
         if (messageText != null)
         {
@@ -41,12 +53,17 @@ public class LevelManager : MonoBehaviour
         }
         else
         {
-            isGameActive = true;
-            Time.timeScale = 1f;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-            if(mainMenuPanel != null) mainMenuPanel.SetActive(false);
+            BeginGameplayState();
         }
+    }
+
+    void BeginGameplayState()
+    {
+        isGameActive = true;
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        if (mainMenuPanel != null) mainMenuPanel.SetActive(false);
     }
 
     void Update()
@@ -67,8 +84,7 @@ public class LevelManager : MonoBehaviour
         hasSessionStarted = true;
         isGameActive = true;
 
-        // Oculta el menú antes de recargar
-        if (mainMenuPanel != null) 
+        if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
 
         Time.timeScale = 1f;
@@ -92,19 +108,22 @@ public class LevelManager : MonoBehaviour
     public void ShowMainMenu()
     {
         isGameActive = false;
-        if(mainMenuPanel != null) mainMenuPanel.SetActive(true);
+        if (mainMenuPanel != null) mainMenuPanel.SetActive(true);
         Time.timeScale = 0f;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
 
+    // -------------------------
+    // Handlers por tipo nivel
+    // -------------------------
     private void HandleLevel1()
     {
-        if(levelEndTriggered) return;
+        if (levelEndTriggered) return;
 
-        if(levelScore < 4)
+        if (levelScore < 4)
         {
-            if(levelTimer > 0f)
+            if (levelTimer > 0f)
                 levelTimer -= Time.deltaTime;
             else
             {
@@ -122,18 +141,19 @@ public class LevelManager : MonoBehaviour
 
     private void HandleLevel2()
     {
-        if(levelEndTriggered) return;
+        if (levelEndTriggered) return;
 
-        var crawler = FindObjectOfType<CrawlerEnemy>();
+        // criterio: si no hay enemigos con el tag enemyTag, nivel completado
+        bool anyEnemy = AnyEnemyPresent();
         var playerObj = GameObject.FindGameObjectWithTag("Player");
-        var ph = playerObj?.GetComponent<PlayerHealth>();
+        bool playerDead = IsPlayerDead(playerObj);
 
-        if(crawler == null)
+        if (!anyEnemy)
         {
             levelEndTriggered = true;
             StartCoroutine(LoadNextOrMenuAfterDelay(0.25f));
         }
-        else if(ph != null && ph.health <= 0f)
+        else if (playerDead)
         {
             levelEndTriggered = true;
             ShowMessage("Game Over");
@@ -141,25 +161,20 @@ public class LevelManager : MonoBehaviour
         }
     }
 
-    // Manejador genérico para niveles extra: avanza al siguiente cuando no hay enemigos restantes
     private void HandleGenericLevel()
     {
-        if(levelEndTriggered) return;
+        if (levelEndTriggered) return;
 
-        // Criterio simple: si no queda ningún enemigo en escena, avanza
-        var anyEnemy = FindObjectOfType<CrawlerEnemy>()
-                    || FindObjectOfType<GolemEnemy>()
-                    || FindObjectOfType<SkeletonEnemy>();
-
+        bool anyEnemy = AnyEnemyPresent();
         var playerObj = GameObject.FindGameObjectWithTag("Player");
-        var ph = playerObj?.GetComponent<PlayerHealth>();
+        bool playerDead = IsPlayerDead(playerObj);
 
-        if(!anyEnemy)
+        if (!anyEnemy)
         {
             levelEndTriggered = true;
             StartCoroutine(LoadNextOrMenuAfterDelay(0.25f));
         }
-        else if(ph != null && ph.health <= 0f)
+        else if (playerDead)
         {
             levelEndTriggered = true;
             ShowMessage("Game Over");
@@ -167,6 +182,87 @@ public class LevelManager : MonoBehaviour
         }
     }
 
+    // -------------------------
+    // Utilidades
+    // -------------------------
+    private bool AnyEnemyPresent()
+    {
+        if (string.IsNullOrEmpty(enemyTag)) return false;
+        var enemies = GameObject.FindGameObjectsWithTag(enemyTag);
+        return enemies != null && enemies.Length > 0;
+    }
+
+    private bool IsPlayerDead(GameObject playerObj)
+    {
+        if (playerObj == null) return false;
+        // intenta obtener un componente que represente vida
+        var mb = playerObj.GetComponent<MonoBehaviour>();
+        if (mb == null) return false;
+
+        // Intenta varias formas de leer un valor de vida (campo/propiedad)
+        float val;
+        if (TryGetHealthValueFromComponent(mb, out val))
+        {
+            return val <= 0f;
+        }
+
+        // fallback: si hay un componente PlayerHealth con currentHealth público
+        var ph = playerObj.GetComponent("PlayerHealth") as MonoBehaviour;
+        if (ph != null && TryGetHealthValueFromComponent(ph, out val))
+            return val <= 0f;
+
+        return false;
+    }
+
+    // intenta leer "health", "currentHealth" o "currentHP" desde cualquier componente vía reflexión
+    private bool TryGetHealthValueFromComponent(MonoBehaviour component, out float healthOut)
+    {
+        healthOut = 0f;
+        if (component == null) return false;
+
+        var t = component.GetType();
+
+        // buscar campos
+        var fieldsToTry = new string[] { "health", "currentHealth", "currentHP", "hp" };
+        foreach (var fname in fieldsToTry)
+        {
+            var f = t.GetField(fname, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (f != null)
+            {
+                var v = f.GetValue(component);
+                if (TryConvertToFloat(v, out healthOut)) return true;
+            }
+        }
+
+        // buscar propiedades
+        foreach (var pname in fieldsToTry)
+        {
+            var p = t.GetProperty(pname, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (p != null && p.CanRead)
+            {
+                var v = p.GetValue(component, null);
+                if (TryConvertToFloat(v, out healthOut)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryConvertToFloat(object v, out float f)
+    {
+        f = 0f;
+        if (v == null) return false;
+        if (v is float) { f = (float)v; return true; }
+        if (v is int) { f = (int)v; return true; }
+        if (v is double) { f = (float)(double)v; return true; }
+        var s = v as string;
+        if (!string.IsNullOrEmpty(s) && float.TryParse(s, out f)) return true;
+        return false;
+    }
+
+    // -------------------------
+    // Mensajes y carga de escenas
+    // -------------------------
     private IEnumerator ShowLevelCompletedThenMenu()
     {
         ShowMessage("Nivel completado");
@@ -191,7 +287,7 @@ public class LevelManager : MonoBehaviour
             }
         }
 
-        if(messageText != null)
+        if (messageText != null)
         {
             // Asegura que el Canvas/jerarquía estén activos
             var canvas = messageText.GetComponentInParent<Canvas>(true);
@@ -210,7 +306,6 @@ public class LevelManager : MonoBehaviour
 
     private string[] GetLevelSequence()
     {
-        // Devuelve el array configurado en el inspector, filtrando entradas vacías
         System.Collections.Generic.List<string> list = new System.Collections.Generic.List<string>();
         if (levelNames != null)
         {
@@ -274,7 +369,7 @@ public class LevelManager : MonoBehaviour
     private IEnumerator HideMessageAfterDelay()
     {
         yield return new WaitForSeconds(messageDuration);
-        if(messageText != null)
+        if (messageText != null)
             messageText.gameObject.SetActive(false);
     }
 }

@@ -3,29 +3,28 @@ using UnityEngine;
 public class Gun : MonoBehaviour
 {
     public Transform playerCamera;
-    public float shotDistance = 10f;
+    public float shotDistance = 25f;
     public float impactForce = 5f;
     public LayerMask shotMask;
+
+    [Header("Effects")]
     public GameObject destroyEffect;
     public ParticleSystem shootParticles;
     public GameObject hitEffect;
+    public GameObject bloodEffectEnemy;
 
     [Header("Audio")]
     public AudioClip hitSound;
     public AudioSource audioSource;
 
-    [Header("Daño")]
-    public float damage = 10f;
-
-    private RaycastHit showRaycastHit;
+    private RaycastHit hit;
 
     void Update()
     {
-        if (LevelManager.instance != null && !LevelManager.instance.isGameActive) return;
+        Debug.DrawRay(playerCamera.position, playerCamera.forward * shotDistance, Color.red);
+
         if (Input.GetButtonDown("Fire1"))
-        {
             Shoot();
-        }
     }
 
     private void Shoot()
@@ -33,66 +32,63 @@ public class Gun : MonoBehaviour
         if (shootParticles != null)
             shootParticles.Play();
 
-        if (Physics.Raycast(playerCamera.position, playerCamera.forward, out showRaycastHit, shotDistance, shotMask, QueryTriggerInteraction.Collide))
+        // ---------------------------------------------------------------------
+        // RAYCAST → Detecta SIEMPRE incluso con MeshCollider NO convex
+        // ---------------------------------------------------------------------
+        if (Physics.Raycast(playerCamera.position, playerCamera.forward, out hit, shotDistance, shotMask, QueryTriggerInteraction.Ignore))
         {
-            //Debug.Log("Shot hit: " + showRaycastHit.collider.name);
+            Debug.Log("Shot hit: " + hit.collider.name);
 
-            //  Efecto de impacto visual
+            // Impact effect (pared, suelo, objetos)
             if (hitEffect != null)
-                Instantiate(hitEffect, showRaycastHit.point, Quaternion.LookRotation(showRaycastHit.normal));
+                Instantiate(hitEffect, hit.point, Quaternion.LookRotation(hit.normal));
 
-            //  Si tiene rigidbody, aplicar fuerza
-            Rigidbody rb = showRaycastHit.collider.GetComponent<Rigidbody>();
+            // Force push
+            Rigidbody rb = hit.collider.GetComponent<Rigidbody>();
             if (rb != null)
-                rb.AddForce(-showRaycastHit.normal * impactForce, ForceMode.Impulse);
+                rb.AddForce(-hit.normal * impactForce, ForceMode.Impulse);
 
-            //  Reproducir sonido de impacto
+            // Play hit sound
             if (hitSound != null && audioSource != null)
                 audioSource.PlayOneShot(hitSound);
 
-            //  Si golpea un Hitbox (prioritario)
-            var hb = showRaycastHit.collider.GetComponent<Hitbox>();
-            if (hb != null)
-            {
-                hb.ApplyDamage(damage);
-                Debug.Log("Disparo impactó Hitbox en '" + hb.gameObject.name + "' (dueño='" + (hb.owner != null ? hb.owner.name : "null") + "') con daño " + damage);
-                return;
-            }
+            // ---------------------------------------------------------------------
+            //                       DETECTAR ENEMIGO
+            // ---------------------------------------------------------------------
+            EnemyZombi enemy = hit.collider.GetComponentInParent<EnemyZombi>();
 
-            //  Si golpea un enemigo (genérico)
-            var ce = showRaycastHit.collider.GetComponentInParent<CrawlerEnemy>();
-            if (ce != null) { ce.TakeDamage(damage); Debug.Log("Disparo impactó Crawler '" + ce.name + "' con daño " + damage); return; }
-            var ge = showRaycastHit.collider.GetComponentInParent<GolemEnemy>();
-            if (ge != null) { ge.TakeDamage(damage); Debug.Log("Disparo impactó Golem '" + ge.name + "' con daño " + damage); return; }
-            var se = showRaycastHit.collider.GetComponentInParent<SkeletonEnemy>();
-            if (se != null) { se.TakeDamage(damage); Debug.Log("Disparo impactó Skeleton '" + se.name + "' con daño " + damage); return; }
-            var ez = showRaycastHit.collider.GetComponentInParent<EnemyZombi>();
-            if (ez != null) { ez.TakeDamage(damage); Debug.Log("Disparo impactó EnemyZombi '" + ez.name + "' con daño " + damage); return; }
-
-            //  Fallback por reflexión: busca método TakeDamage(float)
-            var mb = showRaycastHit.collider.GetComponentInParent<MonoBehaviour>();
-            if (mb != null)
+            if (enemy != null)
             {
-                var t = mb.GetType();
-                var m = t.GetMethod("TakeDamage", new System.Type[] { typeof(float) });
-                if (m != null)
+                Debug.Log("🩸 Enemy HIT detected!");
+
+                // Sangre
+                if (bloodEffectEnemy != null)
                 {
-                    m.Invoke(mb, new object[] { damage });
-                    Debug.Log("Disparo impactó '" + mb.name + "' (" + t.Name + ") con daño " + damage + " via reflexión");
-                    return;
+                    Instantiate(
+                        bloodEffectEnemy,
+                        hit.point,
+                        Quaternion.LookRotation(hit.normal)
+                    );
                 }
+
+                // Aplicar daño
+                enemy.TakeDamage(50f);
+
+                return; // ← Para no seguir procesando
             }
 
-            //  Si golpea un barril
-            if (showRaycastHit.collider.CompareTag("Barrel"))
+            // ---------------------------------------------------------------------
+            //                  SI ES UN BARRIL
+            // ---------------------------------------------------------------------
+            if (hit.collider.CompareTag("Barrel"))
             {
+                if (destroyEffect != null)
+                    Instantiate(destroyEffect, hit.point, Quaternion.LookRotation(hit.normal));
+
                 if (LevelManager.instance != null)
                     LevelManager.instance.levelScore++;
 
-                if (destroyEffect != null)
-                    Instantiate(destroyEffect, showRaycastHit.point, Quaternion.LookRotation(showRaycastHit.normal));
-
-                Destroy(showRaycastHit.collider.gameObject);
+                Destroy(hit.collider.gameObject);
             }
         }
     }

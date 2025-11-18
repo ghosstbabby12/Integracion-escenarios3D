@@ -10,9 +10,8 @@ public class Hitbox : MonoBehaviour
     {
         if (owner == null)
         {
-            owner = GetComponentInParent<CrawlerEnemy>()
-                 ?? (MonoBehaviour)GetComponentInParent<GolemEnemy>()
-                 ?? (MonoBehaviour)GetComponentInParent<SkeletonEnemy>()
+            owner = GetComponentInParent<EnemyZombi>()
+                 
                  ?? (MonoBehaviour)GetComponentInParent<EnemyZombi>();
         }
     }
@@ -21,10 +20,7 @@ public class Hitbox : MonoBehaviour
     {
         if (owner == null) return;
 
-        // Tipos conocidos
-        if (owner is CrawlerEnemy ce) { ce.TakeDamage(damage); return; }
-        if (owner is GolemEnemy ge)   { ge.TakeDamage(damage); return; }
-        if (owner is SkeletonEnemy se){ se.TakeDamage(damage); return; }
+    
         if (owner is EnemyZombi ez)   { ez.TakeDamage(damage); return; }
 
         // Fallback reflexión
@@ -33,5 +29,4 @@ public class Hitbox : MonoBehaviour
         if (m != null) m.Invoke(owner, new object[] { damage });
     }
 }
-
 
